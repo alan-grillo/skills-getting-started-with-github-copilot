@@ -1,12 +1,32 @@
 document.addEventListener('DOMContentLoaded', () => {
   const activitiesList = document.getElementById('activities-list');
-  const activitySelect = document.getElementById('activity');
+  let activitySelect = document.getElementById('activity');
   const messageDiv = document.getElementById('message');
+
+  if (!activitiesList) {
+    console.error('Element #activities-list not found in DOM');
+    return;
+  }
+
+  if (!activitySelect) {
+    console.warn('Element #activity not found; creating fallback select');
+    const signupForm = document.getElementById('signup-form');
+    if (signupForm) {
+      const wrapper = signupForm.querySelector('.form-group') || signupForm;
+      activitySelect = document.createElement('select');
+      activitySelect.id = 'activity';
+      activitySelect.required = true;
+      wrapper.appendChild(activitySelect);
+    } else {
+      console.error('Signup form not found; cannot create activity select');
+    }
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
-      const response = await fetch('/activities');
+      const response = await fetch('/activities', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
       const activities = await response.json();
 
       // Clear loading message
@@ -44,7 +64,37 @@ document.addEventListener('DOMContentLoaded', () => {
         if (info.participants && info.participants.length > 0) {
           info.participants.forEach(p => {
             const li = document.createElement('li');
-            li.textContent = p;
+
+            const span = document.createElement('span');
+            span.className = 'participant-email';
+            span.textContent = p;
+
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'participant-delete';
+            delBtn.setAttribute('aria-label', `Remove ${p}`);
+            delBtn.innerHTML = '&times;';
+
+            delBtn.addEventListener('click', async (ev) => {
+              ev.preventDefault();
+              if (!confirm(`Remove ${p} from ${name}?`)) return;
+              try {
+                const res = await fetch(`/activities/${encodeURIComponent(name)}/participants?email=${encodeURIComponent(p)}`, { method: 'DELETE' });
+                if (!res.ok) {
+                  const err = await res.json();
+                  showMessage(err.detail || 'Failed to remove participant', 'error');
+                } else {
+                  const data = await res.json();
+                  showMessage(data.message, 'success');
+                  fetchActivities();
+                }
+              } catch (err) {
+                showMessage('Network error', 'error');
+              }
+            });
+
+            li.appendChild(span);
+            li.appendChild(delBtn);
             ul.appendChild(li);
           });
         } else {
@@ -73,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
         activitySelect.appendChild(option);
       }
     } catch (error) {
-      activitiesList.innerHTML = '<p>Failed to load activities. Please try again later.</p>';
+      activitiesList.innerHTML = '<p class="error">Failed to load activities. See console for details.</p>';
       console.error('Error fetching activities:', error);
     }
   }
